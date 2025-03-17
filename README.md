@@ -11,8 +11,8 @@ A beautiful and functional weather application built with Flutter that provides 
 - **Form Validation**: Input validation for email and password fields
 
 ## Screenshots
-
-[Place screenshots here]
+![Screenshot_20250317_080805](https://github.com/user-attachments/assets/06cc337c-35a9-4aad-995c-0d9d123403e1)
+![Screenshot_20250317_080711](https://github.com/user-attachments/assets/4bc99e2b-4cf6-4c8a-b753-9348ed156ff6)
 
 ## Getting Started
 
