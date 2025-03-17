@@ -72,15 +72,6 @@ You can customize the app by modifying the following:
 - flutter: ^3.0.0
 - [Other dependencies as needed]
 
-## Removing Debug Banner
-
-To remove the debug banner from your app:
-
-1. Open your `main.dart` file
-2. In your MaterialApp widget, add:
-   ```dart
-   debugShowCheckedModeBanner: false
-   ```
 
 ## Contributing
 
