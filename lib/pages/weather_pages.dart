@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_page.dart'; // Make sure this import is uncommented
 
 class WeatherPage extends StatefulWidget {
   const WeatherPage({super.key});
@@ -16,13 +18,24 @@ class _WeatherPageState extends State<WeatherPage> {
   final TextEditingController _cityController = TextEditingController(text: 'London');
 
   bool _isLoading = false;
+  bool _isSearching = false;
   Map<String, dynamic>? _weatherData;
   List<dynamic>? _forecastData;
   String? _errorMessage;
+  List<Map<String, dynamic>> _searchSuggestions = [];
+  List<Map<String, dynamic>> _recentSearches = [];
+
+  // Add HTTP client for proper disposal
+  http.Client? _client;
+
+  // Firebase Auth instance
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
+    _client = http.Client();
+    _loadRecentSearches();
     // Fetch weather for default city on startup
     _getWeatherData(_cityController.text);
   }
@@ -30,51 +43,292 @@ class _WeatherPageState extends State<WeatherPage> {
   @override
   void dispose() {
     _cityController.dispose();
+    _client?.close();
     super.dispose();
   }
 
-  Future<void> _getWeatherData(String city) async {
-    if (city.isEmpty) {
+  // Fixed logout function
+  Future<void> _logout() async {
+    try {
+      await _auth.signOut();
+      if (mounted) {
+        // Use direct navigation instead of named routes
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+              (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error logging out: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Show logout confirmation dialog
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _logout();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Load recent searches (you can implement SharedPreferences here)
+  void _loadRecentSearches() {
+    // For now, just some default suggestions
+    // In a real app, you'd load this from SharedPreferences
+    _recentSearches = [
+      {'name': 'London', 'country': 'GB', 'display': 'London, GB'},
+      {'name': 'New York', 'country': 'US', 'display': 'New York, US'},
+      {'name': 'Tokyo', 'country': 'JP', 'display': 'Tokyo, JP'},
+      {'name': 'Paris', 'country': 'FR', 'display': 'Paris, FR'},
+      {'name': 'Sydney', 'country': 'AU', 'display': 'Sydney, AU'},
+    ];
+  }
+
+  // Save to recent searches
+  void _saveToRecentSearches(Map<String, dynamic> cityData) {
+    setState(() {
+      // Remove if already exists
+      _recentSearches.removeWhere((item) =>
+      item['name'] == cityData['name'] && item['country'] == cityData['country']);
+
+      // Add to beginning
+      _recentSearches.insert(0, cityData);
+
+      // Keep only last 10 searches
+      if (_recentSearches.length > 10) {
+        _recentSearches = _recentSearches.take(10).toList();
+      }
+    });
+
+    // Here you would save to SharedPreferences in a real app
+    // SharedPreferences.getInstance().then((prefs) =>
+    //   prefs.setString('recent_searches', json.encode(_recentSearches)));
+  }
+
+  // Search for city suggestions using OpenWeatherMap Geocoding API
+  Future<void> _searchCities(String query) async {
+    if (query.length < 2) {
       setState(() {
-        _errorMessage = "Please enter a city name";
+        _searchSuggestions = [];
       });
       return;
     }
 
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _isSearching = true;
     });
 
     try {
-      // Get current weather
-      final weatherResponse = await http.get(
-          Uri.parse('https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$_apiKey&units=metric')
+      final response = await _client!.get(
+          Uri.parse('https://api.openweathermap.org/geo/1.0/direct?q=$query&limit=10&appid=$_apiKey')
       );
 
-      // Get forecast
-      final forecastResponse = await http.get(
-          Uri.parse('https://api.openweathermap.org/data/2.5/forecast?q=$city&appid=$_apiKey&units=metric')
-      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
 
-      if (weatherResponse.statusCode == 200 && forecastResponse.statusCode == 200) {
         setState(() {
-          _weatherData = json.decode(weatherResponse.body);
-          final forecastRaw = json.decode(forecastResponse.body);
-          _forecastData = forecastRaw['list'];
-          _isLoading = false;
+          _searchSuggestions = data.map((item) => {
+            'name': item['name'],
+            'country': item['country'],
+            'state': item['state'] ?? '',
+            'lat': item['lat'],
+            'lon': item['lon'],
+            'display': item['state'] != null
+                ? '${item['name']}, ${item['state']}, ${item['country']}'
+                : '${item['name']}, ${item['country']}'
+          }).toList();
+          _isSearching = false;
         });
       } else {
         setState(() {
-          _errorMessage = "Failed to load weather data: ${weatherResponse.reasonPhrase}";
-          _isLoading = false;
+          _isSearching = false;
+          _searchSuggestions = [];
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = "Error: $e";
-        _isLoading = false;
+        _isSearching = false;
+        _searchSuggestions = [];
       });
+    }
+  }
+
+  // Search popular cities by default when search is opened
+  Future<void> _loadPopularCities() async {
+    const popularCityNames = [
+      'London', 'New York', 'Tokyo', 'Paris', 'Sydney',
+      'Dubai', 'Singapore', 'Mumbai', 'Los Angeles', 'Berlin'
+    ];
+
+    setState(() {
+      _isSearching = true;
+    });
+
+    try {
+      List<Map<String, dynamic>> popularCities = [];
+
+      for (String cityName in popularCityNames) {
+        final response = await _client!.get(
+            Uri.parse('https://api.openweathermap.org/geo/1.0/direct?q=$cityName&limit=1&appid=$_apiKey')
+        );
+
+        if (response.statusCode == 200) {
+          final List<dynamic> data = json.decode(response.body);
+          if (data.isNotEmpty) {
+            final item = data[0];
+            popularCities.add({
+              'name': item['name'],
+              'country': item['country'],
+              'state': item['state'] ?? '',
+              'lat': item['lat'],
+              'lon': item['lon'],
+              'display': item['state'] != null
+                  ? '${item['name']}, ${item['state']}, ${item['country']}'
+                  : '${item['name']}, ${item['country']}'
+            });
+          }
+        }
+      }
+
+      setState(() {
+        _searchSuggestions = popularCities;
+        _isSearching = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isSearching = false;
+      });
+    }
+  }
+
+  Future<void> _getWeatherData(String city) async {
+    if (city.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Please enter a city name";
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      // Get current weather
+      final weatherResponse = await _client!.get(
+          Uri.parse('https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$_apiKey&units=metric')
+      );
+
+      // Get forecast
+      final forecastResponse = await _client!.get(
+          Uri.parse('https://api.openweathermap.org/data/2.5/forecast?q=$city&appid=$_apiKey&units=metric')
+      );
+
+      if (weatherResponse.statusCode == 200 && forecastResponse.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            _weatherData = json.decode(weatherResponse.body);
+            final forecastRaw = json.decode(forecastResponse.body);
+            _forecastData = forecastRaw['list'];
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "City not found. Please check the spelling and try again.";
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Error: Unable to connect to weather service";
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Get weather by coordinates (more accurate)
+  Future<void> _getWeatherByCoordinates(double lat, double lon, String cityName) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      // Get current weather by coordinates
+      final weatherResponse = await _client!.get(
+          Uri.parse('https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$_apiKey&units=metric')
+      );
+
+      // Get forecast by coordinates
+      final forecastResponse = await _client!.get(
+          Uri.parse('https://api.openweathermap.org/data/2.5/forecast?lat=$lat&lon=$lon&appid=$_apiKey&units=metric')
+      );
+
+      if (weatherResponse.statusCode == 200 && forecastResponse.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            _weatherData = json.decode(weatherResponse.body);
+            final forecastRaw = json.decode(forecastResponse.body);
+            _forecastData = forecastRaw['list'];
+            _isLoading = false;
+            _cityController.text = cityName;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "Failed to load weather data";
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Error: Unable to connect to weather service";
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -115,12 +369,15 @@ class _WeatherPageState extends State<WeatherPage> {
           IconButton(
             icon: const Icon(Icons.search, color: Colors.white),
             onPressed: () {
+              // Load popular cities when search is opened
+              _loadPopularCities();
+
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (context) => Container(
-                  height: MediaQuery.of(context).size.height * 0.3,
+                  height: MediaQuery.of(context).size.height * 0.8,
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.only(
@@ -157,15 +414,122 @@ class _WeatherPageState extends State<WeatherPage> {
                               borderSide: BorderSide.none,
                             ),
                             prefixIcon: const Icon(Icons.location_city),
+                            suffixIcon: _isSearching
+                                ? const Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                                : null,
                           ),
+                          onChanged: (value) {
+                            if (value.isNotEmpty) {
+                              _searchCities(value);
+                            } else {
+                              _loadPopularCities();
+                            }
+                          },
                         ),
+                        const SizedBox(height: 20),
+
+                        // Search suggestions or popular cities
+                        if (_searchSuggestions.isNotEmpty)
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _cityController.text.isEmpty ? 'Popular Cities' : 'Search Results',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Expanded(
+                                  child: ListView.builder(
+                                    itemCount: _searchSuggestions.length,
+                                    itemBuilder: (context, index) {
+                                      final suggestion = _searchSuggestions[index];
+                                      return ListTile(
+                                        leading: const Icon(Icons.location_on),
+                                        title: Text(suggestion['display']),
+                                        onTap: () {
+                                          // Save to recent searches
+                                          _saveToRecentSearches(suggestion);
+
+                                          _getWeatherByCoordinates(
+                                            suggestion['lat'],
+                                            suggestion['lon'],
+                                            suggestion['display'],
+                                          );
+                                          Navigator.pop(context);
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (_recentSearches.isNotEmpty)
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Recent Searches',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Expanded(
+                                  child: ListView.builder(
+                                    itemCount: _recentSearches.length,
+                                    itemBuilder: (context, index) {
+                                      final city = _recentSearches[index];
+                                      return ListTile(
+                                        leading: const Icon(Icons.history),
+                                        title: Text(city['display']),
+                                        onTap: () {
+                                          _cityController.text = city['display'];
+                                          _getWeatherData(city['display']);
+                                          Navigator.pop(context);
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          const Expanded(
+                            child: Center(
+                              child: Text(
+                                'Start typing to search for cities',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ),
+
                         const SizedBox(height: 20),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
                             onPressed: () {
-                              _getWeatherData(_cityController.text);
-                              Navigator.pop(context);
+                              if (_cityController.text.isNotEmpty) {
+                                _getWeatherData(_cityController.text);
+                                Navigator.pop(context);
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue,
@@ -189,15 +553,41 @@ class _WeatherPageState extends State<WeatherPage> {
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () => _getWeatherData(_cityController.text),
           ),
+          // Add logout button here
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _showLogoutDialog,
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : _errorMessage != null
           ? Center(
-        child: Text(
-          _errorMessage!,
-          style: const TextStyle(color: Colors.red),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              style: const TextStyle(color: Colors.red, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _errorMessage = null;
+                });
+              },
+              child: const Text('Try Again'),
+            ),
+          ],
         ),
       )
           : _weatherData != null
@@ -230,34 +620,38 @@ class _WeatherPageState extends State<WeatherPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _weatherData!['name'],
-                                  style: const TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _weatherData!['name'],
+                                    style: const TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                                Text(
-                                  DateFormat('EEEE, d MMMM').format(DateTime.now()),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white70,
+                                  Text(
+                                    '${_weatherData!['sys']['country']} • ${DateFormat('EEEE, d MMMM').format(DateTime.now())}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white70,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 _getWeatherIcon(_weatherData!['weather'][0]['main'], 40),
+                                const SizedBox(height: 4),
                                 Text(
                                   _weatherData!['weather'][0]['description'],
                                   style: const TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     color: Colors.white70,
                                   ),
                                 ),
@@ -376,125 +770,125 @@ class _WeatherPageState extends State<WeatherPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-      const Text(
-      "Hourly Forecast",
-      style: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
-      ),
-    ),
-    const SizedBox(height: 16),
-    SizedBox(
-    height: 120,
-    child: ListView.builder(
-    physics: const BouncingScrollPhysics(),
-    scrollDirection: Axis.horizontal,
-    itemCount: _forecastData!.take(8).length,
-    itemBuilder: (context, index) {
-    final forecast = _forecastData![index];
-    final time = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
-    final temp = forecast['main']['temp'];
-    final weather = forecast['weather'][0]['main'];
-
-    return Container(
-    margin: const EdgeInsets.only(right: 16),
-    padding: const EdgeInsets.all(12),
-    width: 80,
-    decoration: BoxDecoration(
-    color: Colors.white.withOpacity(0.2),
-    borderRadius: BorderRadius.circular(15),
-    ),
-    child: Column(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-    Text(
-    DateFormat('ha').format(time),
-    style: const TextStyle(
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
-    ),
-    ),
-    _getWeatherIcon(weather, 30),
-    Text(
-    "${temp.toStringAsFixed(1)}°",
-    style: const TextStyle(
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
-    ),
-    ),
-    ],
-    ),
-    );
-    },
-    ),
-    ),
-    const SizedBox(height: 30),
-    const Text(
-    "Next Days",
-    style: TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: Colors.white,
-    ),
-    ),
-    const SizedBox(height: 16),
-    Column(
-    children: groupedForecast.entries.take(5).map((entry) {
-    // Skip today
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    if (entry.key == today) return const SizedBox.shrink();
-
-    // Use noon forecast as daily representation
-    final dayForecast = entry.value.firstWhere(
-    (item) {
-    final time = DateTime.fromMillisecondsSinceEpoch(item['dt'] * 1000);
-    return time.hour >= 12 && time.hour <= 14;
-    },
-    orElse: () => entry.value.first,
-    );
-
-    final date = DateTime.fromMillisecondsSinceEpoch(dayForecast['dt'] * 1000);
-    final temp = dayForecast['main']['temp'];
-    final weather = dayForecast['weather'][0]['main'];
-
-    return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            DateFormat('EEEE').format(date),
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+        const Text(
+          "Hourly Forecast",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
-          Row(
-            children: [
-              _getWeatherIcon(weather, 25),
-              const SizedBox(width: 8),
-              Text(
-                "${temp.toStringAsFixed(1)}°",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 120,
+          child: ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            scrollDirection: Axis.horizontal,
+            itemCount: _forecastData!.take(8).length,
+            itemBuilder: (context, index) {
+              final forecast = _forecastData![index];
+              final time = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
+              final temp = forecast['main']['temp'];
+              final weather = forecast['weather'][0]['main'];
+
+              return Container(
+                margin: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.all(12),
+                width: 80,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(15),
                 ),
-              ),
-            ],
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      DateFormat('ha').format(time),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    _getWeatherIcon(weather, 30),
+                    Text(
+                      "${temp.toStringAsFixed(1)}°",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        ],
-      ),
-    );
-    }).toList(),
-    ),
+        ),
+        const SizedBox(height: 30),
+        const Text(
+          "Next Days",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Column(
+          children: groupedForecast.entries.take(5).map((entry) {
+            // Skip today
+            final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+            if (entry.key == today) return const SizedBox.shrink();
+
+            // Use noon forecast as daily representation
+            final dayForecast = entry.value.firstWhere(
+                  (item) {
+                final time = DateTime.fromMillisecondsSinceEpoch(item['dt'] * 1000);
+                return time.hour >= 12 && time.hour <= 14;
+              },
+              orElse: () => entry.value.first,
+            );
+
+            final date = DateTime.fromMillisecondsSinceEpoch(dayForecast['dt'] * 1000);
+            final temp = dayForecast['main']['temp'];
+            final weather = dayForecast['weather'][0]['main'];
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    DateFormat('EEEE').format(date),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      _getWeatherIcon(weather, 25),
+                      const SizedBox(width: 8),
+                      Text(
+                        "${temp.toStringAsFixed(1)}°",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
       ],
     );
   }

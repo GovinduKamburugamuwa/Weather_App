@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_page.dart';
 import 'weather_pages.dart';
 
@@ -18,6 +20,11 @@ class _SignupPageState extends State<SignupPage> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _termsAccepted = false;
+  bool _isLoading = false;
+
+  // Firebase Auth and Firestore instances
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void dispose() {
@@ -28,14 +35,79 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  void _signup() {
+  Future<void> _signup() async {
     if (_formKey.currentState!.validate() && _termsAccepted) {
-      // In a real app, you'd register the user here
-      // For now, just navigate to the weather page
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const WeatherPage()),
-      );
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // Create user with Firebase Auth
+        UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        // Update user profile with name
+        await userCredential.user!.updateDisplayName(_nameController.text.trim());
+
+        // Store additional user data in Firestore (optional)
+        await _firestore.collection('users').doc(userCredential.user!.uid).set({
+          'name': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // Registration successful, navigate to weather page
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const WeatherPage()),
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        String message = '';
+        switch (e.code) {
+          case 'weak-password':
+            message = 'The password provided is too weak.';
+            break;
+          case 'email-already-in-use':
+            message = 'The account already exists for that email.';
+            break;
+          case 'invalid-email':
+            message = 'Invalid email address.';
+            break;
+          case 'operation-not-allowed':
+            message = 'Email/password accounts are not enabled.';
+            break;
+          default:
+            message = 'An error occurred. Please try again.';
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('An unexpected error occurred.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     } else if (!_termsAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -112,6 +184,9 @@ class _SignupPageState extends State<SignupPage> {
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter your name';
+                          }
+                          if (value.length < 2) {
+                            return 'Name must be at least 2 characters';
                           }
                           return null;
                         },
@@ -267,7 +342,7 @@ class _SignupPageState extends State<SignupPage> {
                     const SizedBox(height: 24),
                     // Sign up button
                     ElevatedButton(
-                      onPressed: _signup,
+                      onPressed: _isLoading ? null : _signup,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -276,7 +351,16 @@ class _SignupPageState extends State<SignupPage> {
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                      child: const Text(
+                      child: _isLoading
+                          ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                          : const Text(
                         'Create Account',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
