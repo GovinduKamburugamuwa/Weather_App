@@ -351,22 +351,67 @@ class _LoginPageState extends State<LoginPage> {
             onPressed: () async {
               if (emailController.text.isNotEmpty) {
                 try {
-                  await _auth.sendPasswordResetEmail(email: emailController.text.trim());
+                  print('Attempting to send password reset email to: ${emailController.text.trim()}');
+
+                  await _auth.sendPasswordResetEmail(
+                    email: emailController.text.trim(),
+                  );
+
+                  print('Password reset email sent successfully');
                   Navigator.pop(context);
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Password reset email sent!'),
+                      content: Text('Password reset email sent! Check your inbox and spam folder.'),
                       backgroundColor: Colors.green,
+                      duration: Duration(seconds: 5),
+                    ),
+                  );
+                } on FirebaseAuthException catch (e) {
+                  print('FirebaseAuthException: ${e.code} - ${e.message}');
+
+                  String message = '';
+                  switch (e.code) {
+                    case 'user-not-found':
+                      message = 'No account found with this email address.';
+                      break;
+                    case 'invalid-email':
+                      message = 'Please enter a valid email address.';
+                      break;
+                    case 'too-many-requests':
+                      message = 'Too many requests. Please wait before trying again.';
+                      break;
+                    case 'network-request-failed':
+                      message = 'Network error. Please check your internet connection.';
+                      break;
+                    default:
+                      message = 'Error: ${e.message ?? 'Unknown error occurred'}';
+                  }
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(message),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 5),
                     ),
                   );
                 } catch (e) {
+                  print('General Exception: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Error sending reset email. Please try again.'),
+                    SnackBar(
+                      content: Text('Unexpected error: $e'),
                       backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 5),
                     ),
                   );
                 }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter an email address.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
               }
             },
             child: const Text('Send'),
