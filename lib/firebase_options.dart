@@ -42,7 +42,7 @@ class DefaultFirebaseOptions {
   }
 
   static FirebaseOptions get web => FirebaseOptions(
-    apiKey: dotenv.env['WEB_API_KEY'] ?? '',
+    apiKey: dotenv.env['WEB_API_KEY'] ?? 'AIzaSyC7Uax3AJdgHH13h0g8NYdXtNKstIfvOoY',
     appId: '1:554656175883:web:d4a56dbc0a83760366740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get android => FirebaseOptions(
-    apiKey: dotenv.env['ANDROID_API_KEY'] ?? '',
+    apiKey: dotenv.env['ANDROID_API_KEY'] ?? 'AIzaSyC7Uax3AJdgHH13h0g8NYdXtNKstIfvOoY',
     appId: '1:554656175883:android:913bbe13f7d2a5bd66740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get ios => FirebaseOptions(
-    apiKey: dotenv.env['IOS_API_KEY'] ?? '',
+    apiKey: dotenv.env['IOS_API_KEY'] ?? 'AIzaSyC7Uax3AJdgHH13h0g8NYdXtNKstIfvOoY',
     appId: '1:554656175883:ios:9b4d09e0aaa2a14666740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -68,7 +68,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get macos => FirebaseOptions(
-    apiKey: dotenv.env['IOS_API_KEY'] ?? '',
+    apiKey: dotenv.env['IOS_API_KEY'] ?? 'AIzaSyC7Uax3AJdgHH13h0g8NYdXtNKstIfvOoY',
     appId: '1:554656175883:ios:9b4d09e0aaa2a14666740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -77,7 +77,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get windows => FirebaseOptions(
-    apiKey: dotenv.env['WEB_API_KEY'] ?? '',
+    apiKey: dotenv.env['WEB_API_KEY'] ?? 'AIzaSyC7Uax3AJdgHH13h0g8NYdXtNKstIfvOoY',
     appId: '1:554656175883:web:3b3d36c0d9a5680866740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
