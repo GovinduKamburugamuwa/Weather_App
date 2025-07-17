@@ -3,6 +3,7 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
@@ -31,7 +32,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
         throw UnsupportedError(
@@ -40,8 +41,8 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDSJjgGfp-UpLJ7f7EDAgpYEaN7Qan9wqs',
+  static FirebaseOptions get web => FirebaseOptions(
+    apiKey: dotenv.env['WEB_API_KEY'] ?? '',
     appId: '1:554656175883:web:d4a56dbc0a83760366740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -49,16 +50,16 @@ class DefaultFirebaseOptions {
     storageBucket: 'weatherapp-9eb1d.firebasestorage.app',
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyD8pLhHuY-nTemoBoPiUAplDsqFG_F59R8',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: dotenv.env['ANDROID_API_KEY'] ?? '',
     appId: '1:554656175883:android:913bbe13f7d2a5bd66740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
     storageBucket: 'weatherapp-9eb1d.firebasestorage.app',
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyB8L00rxQnS2VXww7iW8RZMqmdd5wlvv4o',
+  static FirebaseOptions get ios => FirebaseOptions(
+    apiKey: dotenv.env['IOS_API_KEY'] ?? '',
     appId: '1:554656175883:ios:9b4d09e0aaa2a14666740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -66,8 +67,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.aidreamteller',
   );
 
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyB8L00rxQnS2VXww7iW8RZMqmdd5wlvv4o',
+  static FirebaseOptions get macos => FirebaseOptions(
+    apiKey: dotenv.env['IOS_API_KEY'] ?? '',
     appId: '1:554656175883:ios:9b4d09e0aaa2a14666740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
@@ -75,8 +76,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.aidreamteller',
   );
 
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDSJjgGfp-UpLJ7f7EDAgpYEaN7Qan9wqs',
+  static FirebaseOptions get windows => FirebaseOptions(
+    apiKey: dotenv.env['WEB_API_KEY'] ?? '',
     appId: '1:554656175883:web:3b3d36c0d9a5680866740e',
     messagingSenderId: '554656175883',
     projectId: 'weatherapp-9eb1d',
